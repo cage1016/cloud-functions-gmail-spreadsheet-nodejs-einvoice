@@ -22,6 +22,7 @@ const pify = require('pify');
 const config = require('./config');
 const oauth = require('./lib/oauth');
 const helpers = require('./lib/helpers');
+const einvoice = require('./lib/einvoice');
 
 /**
  * Request an OAuth 2.0 authorization code
@@ -29,122 +30,130 @@ const helpers = require('./lib/helpers');
  * their auth data) need visit this page
  */
 exports.oauth2init = (req, res) => {
-  // Define OAuth2 scopes
-  const scopes = [
-    'https://www.googleapis.com/auth/gmail.modify'
-  ];
+    // Define OAuth2 scopes
+    const scopes = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.file',
+    ];
 
-  // Generate + redirect to OAuth2 consent form URL
-  const authUrl = oauth.client.generateAuthUrl({
-    access_type: 'offline',
-    scope: scopes,
-    prompt: 'consent' // Required in order to receive a refresh token every time
-  });
-  return res.redirect(authUrl);
+    // Generate + redirect to OAuth2 consent form URL
+    const authUrl = oauth.client.generateAuthUrl({
+        access_type: 'offline',
+        scope: scopes,
+        prompt: 'consent' // Required in order to receive a refresh token every time
+    });
+    return res.redirect(authUrl);
 };
 
 /**
  * Get an access token from the authorization code and store token in Datastore
  */
-exports.oauth2callback = (req, res) => {
-  // Get authorization code from request
-  const code = req.query.code;
+exports.oauth2callback = async (req, res) => {
+    // Get authorization code from request
+    const code = req.query.code;
 
-  // OAuth2: Exchange authorization code for access token
-  return new Promise((resolve, reject) => {
-    oauth.client.getToken(code, (err, token) =>
-      (err ? reject(err) : resolve(token))
-    );
-  })
-    .then((token) => {
-      // Get user email (to use as a Datastore key)
-      oauth.client.credentials = token;
-      return Promise.all([token, oauth.getEmailAddress()]);
-    })
-    .then(([token, emailAddress]) => {
-      // Store token in Datastore
-      return Promise.all([
-        emailAddress,
-        oauth.saveToken(emailAddress)
-      ]);
-    })
-    .then(([emailAddress]) => {
-      // Respond to request
-      res.redirect(`/initWatch?emailAddress=${querystring.escape(emailAddress)}`);
-    })
-    .catch((err) => {
-      // Handle error
-      console.error(err);
-      res.status(500).send('Something went wrong; check the logs.');
-    });
+    // OAuth2: Exchange authorization code for access token
+    try {
+        oauth.client.credentials = await new Promise((resolve, reject) => {
+            oauth.client.getToken(code, (err, token) =>
+                (err ? reject(err) : resolve(token))
+            );
+        });
+        const emailAddress = await oauth.getEmailAddress();
+        await oauth.saveToken(emailAddress);
+
+        // Respond to request
+        res.redirect(`/initWatch?emailAddress=${querystring.escape(emailAddress)}`);
+    } catch (err) {
+        // Handle error
+        console.error(err);
+        res.status(500).send('Something went wrong; check the logs.');
+    }
 };
 
 /**
  * Initialize a watch on the user's inbox
  */
-exports.initWatch = (req, res) => {
-  // Require a valid email address
-  if (!req.query.emailAddress) {
-    return res.status(400).send('No emailAddress specified.');
-  }
-  const email = querystring.unescape(req.query.emailAddress);
-  if (!email.includes('@')) {
-    return res.status(400).send('Invalid emailAddress.');
-  }
+exports.initWatch = async (req, res) => {
+    // Require a valid email address
+    if (!req.query.emailAddress) {
+        return res.status(400).send('No emailAddress specified.');
+    }
+    const email = querystring.unescape(req.query.emailAddress);
+    if (!email.includes('@')) {
+        return res.status(400).send('Invalid emailAddress.');
+    }
 
-  // Retrieve the stored OAuth 2.0 access token
-  return oauth.fetchToken(email)
-    .then(() => {
-      // Initialize a watch
-      return pify(gmail.users.watch)({
-        auth: oauth.client,
-        userId: 'me',
-        resource: {
-          labelIds: ['INBOX'],
-          topicName: config.TOPIC_NAME
+    try {
+        await oauth.fetchToken(email);
+        await pify(gmail.users.watch)({
+            auth: oauth.client,
+            userId: 'me',
+            resource: {
+                labelIds: ['INBOX'],
+                topicName: config.TOPIC_NAME
+            }
+        });
+
+        const id = await helpers.getOrCreateEinvoiceFolder(config.GCF_DRIVE_FOLDER);
+        console.log(`${email} einvoice folder ${config.GCF_DRIVE_FOLDER}(${id})`);
+        einvoice.saveFolder(email, {
+            folderName: config.GCF_DRIVE_FOLDER,
+            id,
+        });
+
+        // Respond with status
+        res.write(`Watch & Create Drive folder initialized!`);
+        res.status(200).end();
+    } catch (err) {
+        // Handle errors
+        if (err.message === config.UNKNOWN_USER_MESSAGE) {
+            res.redirect('/oauth2init');
+        } else {
+            console.error(err);
+            res.status(500).send('Something went wrong; check the logs.');
         }
-      });
-    })
-    .then(() => {
-      // Respond with status
-      res.write(`Watch initialized!`);
-      res.status(200).end();
-    })
-    .catch((err) => {
-      // Handle errors
-      if (err.message === config.UNKNOWN_USER_MESSAGE) {
-        res.redirect('/oauth2init');
-      } else {
-        console.error(err);
-        res.status(500).send('Something went wrong; check the logs.');
-      }
-    });
+    }
 };
 
 /**
-* Process new messages as they are received
-*/
-exports.onNewMessage = (event) => {
-  // Parse the Pub/Sub message
-  const dataStr = Buffer.from(event.data.data, 'base64').toString('ascii');
-  const dataObj = JSON.parse(dataStr);
+ * Process new messages as they are received
+ */
+exports.onNewMessage = async (event) => {
+    try {
+        // Parse the Pub/Sub message
+        const dataStr = Buffer.from(event.data, 'base64').toString('ascii');
+        const dataObj = JSON.parse(dataStr);
 
-  return oauth.fetchToken(dataObj.emailAddress)
-    .then(helpers.listMessageIds)
-    .then(res => helpers.getMessageById(res.messages[0].id)) // Most recent message
-    .then(msg => Promise.all([msg, helpers.getAllImages(msg)]))
-    .then(([msg, images]) => Promise.all([msg, helpers.getImageLabels(images)]))
-    .then(([msg, labels]) => {
-      if (!labels.includes('bird')) {
-        throw new Error(config.NO_LABEL_MATCH); // Exit promise chain
-      }
+        await oauth.fetchToken(dataObj.emailAddress);
+        const res = await helpers.listMessageIds();
 
-      return helpers.labelMessage(msg.id, ['STARRED']);
-    })
-    .catch((err) => {
-      // Handle unexpected errors
-      if (!err.message || err.message !== config.NO_LABEL_MATCH) {
-        console.error(err);
-      }
-    });
+        // filter target most recent message
+        const msg = await helpers.isValidEinvoiceFormat(await helpers.getMessageById(res.messages[0].id));
+        if (!msg)
+            return;
+
+        // get einvoice folder
+        const einvoiceObj = await einvoice.fetchFolder(dataObj.emailAddress);
+
+        // get attachment csv binaray
+        const csvs = await helpers.getAllCSV(msg);
+
+        // de-structure spreadsheet filename and row data
+        const [filename, rows] = await helpers.getCSVRows(csvs);
+
+        // get or insert spreadsheet
+        const spreadsheetId = await helpers.getOrCreateSpreadsheet(einvoiceObj.id, filename);
+
+        // save data to spreadsheet and auto format
+        await helpers.saveToSpreadsheet(spreadsheetId, rows);
+
+        console.log(`onNewMessage(${msg.id}) done.`)
+    } catch (err) {
+        // Handle unexpected errors
+        if (!err.message || err.message !== config.NO_LABEL_MATCH) {
+            console.error(err);
+        }
+    }
 };
