@@ -1,29 +1,21 @@
 {
-  "name": "community-gcf-oauth",
+  "name": "cloud-functions-gmail-spreadsheet-nodejs-einvoice",
   "version": "0.0.1",
-  "private": true,
+  "private": false,
   "license": "Apache-2.0",
-  "author": "Google Inc.",
+  "author": "KAI CHU CHUNG",
   "repository": {
     "type": "git",
-    "url": "https://github.com/GoogleCloudPlatform/community.git"
+    "url": "git@github.com:cage1016/cloud-functions-gmail-spreadsheet-nodejs-einvoice.git"
   },
   "engines": {
-    "node": ">=4.3.2"
-  },
-  "scripts": {
-    "lint": "samples lint",
-    "pretest": "npm run lint",
-    "test": "ava -T 20s --verbose test/*.test.js"
+    "node": ">=8.0.0"
   },
   "dependencies": {
     "@google-cloud/datastore": "^1.4.0",
     "@google-cloud/debug-agent": "^2.3.0",
-    "@google-cloud/vision": "^0.19.0",
     "axios": "^0.18.0",
-    "cheerio": "^1.0.0-rc.2",
     "googleapis": "^23.0.0",
-    "iconv": "^2.3.1",
     "iconv-lite": "^0.4.24",
     "nconf": "^0.10.0",
     "pify": "^3.0.0",
