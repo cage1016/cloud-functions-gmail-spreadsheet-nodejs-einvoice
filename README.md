@@ -1,6 +1,11 @@
-# Gmail + GCF intelligence demo
+# Turn einovice email CSV attachment to Spreadsheet
 
-This repository demonstrates how to write custom mail processing logic for Gmail using the [Gmail API][gmail] and [Cloud Functions][gcf]. See the [blog post][blog] for more information.
+> fork from [GoogleCloudPlatform/cloud-functions-gmail-nodejs: A demo app that processes Gmail messages with Cloud Functions](https://github.com/GoogleCloudPlatform/cloud-functions-gmail-nodejs)
+
+This repository show how to setup custom mail processing logic for Gmail using the [Gmail API][gmail], [Drive][drive], [Spreadsheet][spreadsheet] and [Cloud Functions][gcf]. See the [blog post][blog] for more information.
+
+
+Presentation [Cloud Native Forum - 當電子發票遇見 Google Cloud Function - Google Slides][presentation]
 
 ## Obtaining an OAuth 2.0 Client ID
 In order for an OAuth 2.0 API to verify our program's identity, we must include
@@ -30,9 +35,12 @@ machine.
 1.    In `config.json`, update the values for `GCF_REGION`, `GCLOUD_PROJECT`,
     and `TOPIC_ID`.
 
-[blog]: https://cloud.google.com/blog/products/application-development/adding-custom-intelligence-to-gmail-with-serverless-on-gcp
+[blog]: https://kaichu.io/2018/11/222/cloud-functions-gmail-spreadsheet-nodejs-einvoice/
 [docs_regions]: http://cloud.google.com/functions/docs/locations
 [console_gmail]: http://console.cloud.google.com/apis/api/gmail.googleapis.com/overview
 [console_credentials]: https://console.cloud.google.com/apis/credentials
 [gmail]: https://developers.google.com/gmail/api
+[drive]: https://developers.google.com/drive/api/v3/reference/
+[spreadsheet]: https://developers.google.com/sheets/api/reference/rest/
 [gcf]: https://cloud.google.com/functions
+[presentation]:https://docs.google.com/presentation/d/174KhCOpXIgfzyMzUmcPxz3UZEz3m0W5s3AMNWu9ZO4k
