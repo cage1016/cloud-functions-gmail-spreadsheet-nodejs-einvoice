@@ -1,6 +1,6 @@
 {
-  "GCF_REGION": "us-central1",
-  "GCLOUD_PROJECT": "my-invoice-001",
-  "TOPIC_ID": "einvoice",
+  "GCF_REGION": "YOUR_GCF_REGION",
+  "GCLOUD_PROJECT": "YOUR_GCLOUD_PROJECT",
+  "TOPIC_ID": "YOUR_TOPIC_ID",
   "GCF_DRIVE_FOLDER": "電子發票(GCF)"
 }
